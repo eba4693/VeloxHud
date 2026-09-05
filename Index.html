@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>VELOX HUD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#05070a;
+    --panel:#0d131a;
+    --panel-2:#111a23;
+    --line:#1c2733;
+    --text:#e8f1f5;
+    --dim:#5c7183;
+    --accent:#00e5ff;
+    --accent-dim:#00e5ff33;
+    --amber:#ffb300;
+    --red:#ff4d4d;
+    --green:#3ddc84;
+    --brightness:1;
+  }
+  html[data-theme="day"]{
+    --bg:#eef2f5;
+    --panel:#ffffff;
+    --panel-2:#f4f7f9;
+    --line:#d7e0e6;
+    --text:#0a1620;
+    --dim:#7488968a;
+    --dim:#647685;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:'Rajdhani',sans-serif; overflow:hidden; user-select:none;
+  }
+  #app{
+    height:100vh; height:100dvh; display:flex; flex-direction:column;
+    filter:brightness(var(--brightness));
+    transition:background .3s ease,color .3s ease;
+  }
+  #app.mirror{ transform:scaleX(-1); }
+  .mono{ font-family:'Share Tech Mono',monospace; }
+
+  /* ---------- top bar ---------- */
+  #topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 16px 6px; flex-shrink:0;
+  }
+  #brand{ font-weight:700; font-size:15px; letter-spacing:2px; color:var(--dim); }
+  #brand span{ color:var(--accent); }
+  #gpsdot{ width:8px; height:8px; border-radius:50%; background:var(--dim); margin-left:8px; display:inline-block; transition:background .2s; }
+  #gpsdot.live{ background:var(--green); box-shadow:0 0 6px var(--green); }
+  #gpsdot.bad{ background:var(--red); box-shadow:0 0 6px var(--red); }
+  #clock{ font-size:13px; color:var(--dim); }
+
+  /* ---------- screens ---------- */
+  .screen{ flex:1; display:none; flex-direction:column; overflow-y:auto; padding:0 16px 16px; }
+  .screen.active{ display:flex; }
+
+  /* ---------- HUD screen ---------- */
+  #hud-main{
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    position:relative; min-height:0;
+  }
+  #trip-reset{
+    position:absolute; top:0; right:0; background:none; border:1px solid var(--line);
+    color:var(--dim); border-radius:8px; padding:6px 10px; font-family:'Rajdhani'; font-size:12px;
+    display:flex; align-items:center; gap:6px;
+  }
+  #speed-num{
+    font-size:min(28vw,168px); line-height:1; font-weight:400; color:var(--accent);
+    text-shadow:0 0 22px var(--accent-dim); letter-spacing:-2px;
+  }
+  #speed-unit{ font-size:20px; color:var(--dim); letter-spacing:4px; margin-top:2px; }
+  #chips{
+    display:grid; grid-template-columns:1fr 1fr; gap:10px; width:100%;
+    padding-top:18px; flex-shrink:0;
+  }
+  .chip{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:12px 14px; display:flex; flex-direction:column; gap:2px;
+  }
+  .chip .k{ font-size:11px; color:var(--dim); letter-spacing:1px; }
+  .chip .v{ font-size:22px; font-weight:600; }
+  .chip .v small{ font-size:13px; color:var(--dim); font-weight:500; margin-left:3px; }
+
+  /* ---------- accel screen ---------- */
+  #accel-top{ flex-shrink:0; padding-top:14px; text-align:center; }
+  #accel-speed{ font-size:52px; color:var(--amber); text-shadow:0 0 16px #ffb30055; }
+  #accel-state{ font-size:13px; color:var(--dim); letter-spacing:2px; height:18px; margin-top:2px;}
+  #accel-btn{
+    margin:16px auto 8px; width:150px; height:150px; border-radius:50%;
+    border:3px solid var(--amber); background:radial-gradient(circle,#ffb30022,transparent 70%);
+    color:var(--amber); font-size:18px; font-weight:700; letter-spacing:1px;
+    display:flex; align-items:center; justify-content:center; flex-direction:column; gap:4px;
+  }
+  #accel-btn.running{ border-color:var(--red); color:var(--red); background:radial-gradient(circle,#ff4d4d22,transparent 70%);}
+  #accel-list{ margin-top:8px; display:flex; flex-direction:column; gap:6px; padding-bottom:12px; }
+  .accel-row{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 14px;
+  }
+  .accel-row.hit{ border-color:var(--amber); }
+  .accel-row .lbl{ font-size:15px; color:var(--dim); font-weight:600; }
+  .accel-row .time{ font-size:18px; }
+  .accel-row .best{ font-size:12px; color:var(--amber); margin-left:8px; }
+
+  /* ---------- settings screen ---------- */
+  .sec-title{ font-size:12px; color:var(--dim); letter-spacing:2px; margin:16px 0 8px; }
+  .sec-title:first-child{ margin-top:12px; }
+  .row{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:12px 14px; margin-bottom:8px;
+  }
+  .row .lbl{ font-size:15px; font-weight:600; }
+  .row .sub{ font-size:12px; color:var(--dim); margin-top:2px; }
+  .switch{ width:46px; height:26px; border-radius:14px; background:var(--line); position:relative; flex-shrink:0; }
+  .switch::after{ content:''; position:absolute; width:20px; height:20px; border-radius:50%; background:#fff; top:3px; left:3px; transition:left .18s; }
+  .switch.on{ background:var(--accent); }
+  .switch.on::after{ left:23px; }
+  .seg{ display:flex; gap:6px; }
+  .seg button{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--dim);
+    padding:7px 12px; border-radius:8px; font-family:'Rajdhani'; font-weight:600; font-size:13px;
+  }
+  .seg button.on{ background:var(--accent); color:#00222a; border-color:var(--accent); }
+  .swatches{ display:flex; gap:8px; }
+  .swatch{ width:26px; height:26px; border-radius:50%; border:2px solid transparent; }
+  .swatch.on{ border-color:var(--text); }
+  input[type=range]{ width:120px; accent-color:var(--accent); }
+  .danger{ color:var(--red); background:none; border:1px solid var(--red); border-radius:10px; padding:10px 14px; font-family:'Rajdhani'; font-weight:600; width:100%; margin-top:6px; }
+  .note{ font-size:12px; color:var(--dim); line-height:1.5; margin:14px 2px 4px; }
+
+  /* ---------- permission overlay ---------- */
+  #gate{
+    position:fixed; inset:0; background:var(--bg); z-index:50;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:30px; text-align:center;
+  }
+  #gate h1{ font-size:26px; letter-spacing:3px; margin:0; color:var(--accent); }
+  #gate p{ color:var(--dim); font-size:14px; max-width:320px; line-height:1.6; margin:0; }
+  #gate button{
+    background:var(--accent); color:#00222a; border:none; padding:14px 34px; border-radius:30px;
+    font-family:'Rajdhani'; font-weight:700; font-size:16px; letter-spacing:1px;
+  }
+  #gate .err{ color:var(--red); font-size:13px; max-width:300px; }
+
+  /* ---------- bottom tabs ---------- */
+  #tabs{
+    display:flex; flex-shrink:0; border-top:1px solid var(--line); background:var(--panel);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .tab{
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
+    padding:10px 0 8px; color:var(--dim); font-size:11px; letter-spacing:1px; font-weight:600;
+  }
+  .tab.active{ color:var(--accent); }
+  .tab svg{ width:20px; height:20px; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>VELOX <span class="mono" style="color:var(--dim);font-size:16px;">HUD</span></h1>
+  <p>Aplicația are nevoie de acces la locație pentru a-ți calcula viteza, distanța și vremea din zona ta.</p>
+  <button id="gate-btn">Activează GPS</button>
+  <div class="err" id="gate-err"></div>
+</div>
+
+<div id="app">
+  <div id="topbar">
+    <div id="brand">VELOX<span>·</span>HUD <span id="gpsdot"></span></div>
+    <div id="clock" class="mono">--:--</div>
+  </div>
+
+  <!-- HUD SCREEN -->
+  <div class="screen active" id="screen-hud">
+    <div id="hud-main">
+      <button id="trip-reset" title="Resetează traseul">⟲ traseu</button>
+      <div id="speed-num" class="mono">0</div>
+      <div id="speed-unit">KM/H</div>
+      <div id="chips">
+        <div class="chip"><div class="k">VITEZĂ MEDIE</div><div class="v mono" id="c-avg">0.0<small>km/h</small></div></div>
+        <div class="chip"><div class="k">DISTANȚĂ</div><div class="v mono" id="c-dist">0.00<small>km</small></div></div>
+        <div class="chip"><div class="k">VREME</div><div class="v" id="c-weather">–</div></div>
+        <div class="chip"><div class="k">BATERIE TELEFON</div><div class="v mono" id="c-batt">–</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACCEL SCREEN -->
+  <div class="screen" id="screen-accel">
+    <div id="accel-top">
+      <div id="accel-speed" class="mono">0</div>
+      <div id="accel-state">APĂSĂ START ȘI ACCELEREAZĂ</div>
+      <button id="accel-btn">START<br><span style="font-size:11px;font-weight:500;">rulare 0–100</span></button>
+    </div>
+    <div id="accel-list"></div>
+  </div>
+
+  <!-- SETTINGS SCREEN -->
+  <div class="screen" id="screen-settings">
+    <div class="sec-title">AFIȘAJ</div>
+    <div class="row">
+      <div><div class="lbl">Mod întunecat</div><div class="sub">Interfață dark / zi</div></div>
+      <div class="switch" id="s-theme"></div>
+    </div>
+    <div class="row">
+      <div><div class="lbl">Luminozitate</div><div class="sub">Ajustează strălucirea ecranului</div></div>
+      <input type="range" id="s-brightness" min="50" max="150" value="100">
+    </div>
+    <div class="row">
+      <div><div class="lbl">Mod oglindă (parbriz)</div><div class="sub">Pentru proiecție HUD pe parbriz</div></div>
+      <div class="switch" id="s-mirror"></div>
+    </div>
+    <div class="row">
+      <div><div class="lbl">Culoare accent</div><div class="sub">Culoarea vitezei și a graficelor</div></div>
+      <div class="swatches">
+        <div class="swatch" data-c="#00e5ff" style="background:#00e5ff"></div>
+        <div class="swatch" data-c="#ffb300" style="background:#ffb300"></div>
+        <div class="swatch" data-c="#3ddc84" style="background:#3ddc84"></div>
+        <div class="swatch" data-c="#ff4d4d" style="background:#ff4d4d"></div>
+        <div class="swatch" data-c="#b06bff" style="background:#b06bff"></div>
+      </div>
+    </div>
+
+    <div class="sec-title">UNITĂȚI</div>
+    <div class="row">
+      <div><div class="lbl">Unitate viteză</div><div class="sub">Afișare pe HUD</div></div>
+      <div class="seg" id="s-units">
+        <button data-u="kmh">km/h</button>
+        <button data-u="mph">mph</button>
+      </div>
+    </div>
+
+    <div class="sec-title">SISTEM</div>
+    <div class="row">
+      <div><div class="lbl">Ecran mereu pornit</div><div class="sub">Împiedică blocarea telefonului</div></div>
+      <div class="switch" id="s-wake"></div>
+    </div>
+
+    <div class="sec-title">DATE</div>
+    <button class="danger" id="s-reset-times">Șterge recordurile de accelerație</button>
+    <div class="note">Vitezele, distanța și timpii sunt calculați pe baza GPS-ului telefonului — precizia depinde de semnalul GPS și poate varia ușor față de vitezometrul mașinii.</div>
+  </div>
+
+  <div id="tabs">
+    <div class="tab active" data-tab="hud">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 12l4-4"/></svg>
+      HUD
+    </div>
+    <div class="tab" data-tab="accel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l5-5 4 4 8-8"/><path d="M14 8h6v6"/></svg>
+      ACCELERAȚII
+    </div>
+    <div class="tab" data-tab="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      SETĂRI
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var THRESHOLDS = [10,20,30,40,50,60,70,80,90,100];
+
+  var state = {
+    theme:'dark', mirror:false, units:'kmh', accent:'#00e5ff', brightness:100, wake:false
+  };
+  var best = {}; // threshold -> seconds
+
+  var trip = { distance:0, startTime:Date.now(), lastFix:null, movingSpeeds:[] };
+  var run = { status:'idle', startTime:null, hits:{}, prevSample:null };
+
+  var els = {};
+  ["app","gate","gate-btn","gate-err","clock","gpsdot","speed-num","speed-unit",
+   "c-avg","c-dist","c-weather","c-batt","trip-reset",
+   "accel-speed","accel-state","accel-btn","accel-list",
+   "s-theme","s-brightness","s-mirror","s-units","s-wake","s-reset-times"
+  ].forEach(function(id){ els[id]=document.getElementById(id); });
+
+  // ---------- storage helpers ----------
+  function hasStorage(){ return typeof window.storage !== "undefined" && window.storage; }
+  function loadAll(){
+    if(!hasStorage()) return Promise.resolve();
+    return Promise.all([
+      window.storage.get("velox:settings", false).catch(function(){return null;}),
+      window.storage.get("velox:best", false).catch(function(){return null;})
+    ]).then(function(r){
+      if(r[0] && r[0].value){ try{ Object.assign(state, JSON.parse(r[0].value)); }catch(e){} }
+      if(r[1] && r[1].value){ try{ best = JSON.parse(r[1].value); }catch(e){} }
+    });
+  }
+  function saveSettings(){
+    if(!hasStorage()) return;
+    window.storage.set("velox:settings", JSON.stringify(state), false).catch(function(){});
+  }
+  function saveBest(){
+    if(!hasStorage()) return;
+    window.storage.set("velox:best", JSON.stringify(best), false).catch(function(){});
+  }
+
+  // ---------- theme / settings application ----------
+  function applySettings(){
+    document.documentElement.setAttribute("data-theme", state.theme);
+    els.app.classList.toggle("mirror", state.mirror);
+    document.documentElement.style.setProperty("--brightness", (state.brightness/100).toFixed(2));
+    document.documentElement.style.setProperty("--accent", state.accent);
+    document.documentElement.style.setProperty("--accent-dim", state.accent+"33");
+
+    els["s-theme"].classList.toggle("on", state.theme==="dark");
+    els["s-mirror"].classList.toggle("on", state.mirror);
+    els["s-wake"].classList.toggle("on", state.wake);
+    els["s-brightness"].value = state.brightness;
+    document.querySelectorAll(".swatch").forEach(function(sw){
+      sw.classList.toggle("on", sw.getAttribute("data-c")===state.accent);
+    });
+    document.querySelectorAll("#s-units button").forEach(function(b){
+      b.classList.toggle("on", b.getAttribute("data-u")===state.units);
+    });
+    els["speed-unit"].textContent = state.units==="kmh" ? "KM/H" : "MPH";
+  }
+
+  els["s-theme"].onclick=function(){ state.theme = state.theme==="dark"?"day":"dark"; applySettings(); saveSettings(); };
+  els["s-mirror"].onclick=function(){ state.mirror = !state.mirror; applySettings(); saveSettings(); };
+  els["s-brightness"].oninput=function(e){ state.brightness = +e.target.value; applySettings(); };
+  els["s-brightness"].onchange=function(){ saveSettings(); };
+  document.querySelectorAll(".swatch").forEach(function(sw){
+    sw.onclick=function(){ state.accent = sw.getAttribute("data-c"); applySettings(); saveSettings(); };
+  });
+  document.querySelectorAll("#s-units button").forEach(function(b){
+    b.onclick=function(){ state.units = b.getAttribute("data-u"); applySettings(); saveSettings(); };
+  });
+  els["s-wake"].onclick=function(){
+    state.wake = !state.wake; applySettings(); saveSettings();
+    if(state.wake) requestWakeLock(); else releaseWakeLock();
+  };
+  els["s-reset-times"].onclick=function(){
+    best = {}; saveBest(); renderAccelList();
+  };
+
+  var wakeLock=null;
+  function requestWakeLock(){
+    if("wakeLock" in navigator){
+      navigator.wakeLock.request("screen").then(function(wl){ wakeLock=wl; }).catch(function(){});
+    }
+  }
+  function releaseWakeLock(){ if(wakeLock){ wakeLock.release().catch(function(){}); wakeLock=null; } }
+  document.addEventListener("visibilitychange", function(){
+    if(document.visibilityState==="visible" && state.wake) requestWakeLock();
+  });
+
+  // ---------- tabs ----------
+  document.querySelectorAll(".tab").forEach(function(t){
+    t.onclick=function(){
+      document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("active");});
+      document.querySelectorAll(".screen").forEach(function(x){x.classList.remove("active");});
+      t.classList.add("active");
+      document.getElementById("screen-"+t.getAttribute("data-tab")).classList.add("active");
+    };
+  });
+
+  // ---------- clock ----------
+  function tickClock(){
+    var d=new Date();
+    var h=(""+d.getHours()).padStart(2,"0"), m=(""+d.getMinutes()).padStart(2,"0");
+    els.clock.textContent = h+":"+m;
+  }
+  setInterval(tickClock,1000); tickClock();
+
+  // ---------- unit conversion ----------
+  function toDisplaySpeed(kmh){ return state.units==="kmh" ? kmh : kmh*0.621371; }
+
+  // ---------- geolocation / speed / distance ----------
+  function haversine(lat1,lon1,lat2,lon2){
+    var R=6371000, toRad=Math.PI/180;
+    var dLat=(lat2-lat1)*toRad, dLon=(lon2-lon1)*toRad;
+    var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*toRad)*Math.cos(lat2*toRad)*Math.sin(dLon/2)*Math.sin(dLon/2);
+    return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  }
+
+  var lastWeatherFetch=0, watchId=null;
+
+  function onPosition(pos){
+    els.gpsdot.className = pos.coords.accuracy<25 ? "live" : "";
+    var now = pos.timestamp || Date.now();
+    var lat=pos.coords.latitude, lon=pos.coords.longitude;
+
+    var speedKmh;
+    if(typeof pos.coords.speed === "number" && pos.coords.speed !== null && pos.coords.speed>=0){
+      speedKmh = pos.coords.speed*3.6;
+    } else if(trip.lastFix){
+      var dt=(now-trip.lastFix.t)/1000;
+      var d=haversine(trip.lastFix.lat,trip.lastFix.lon,lat,lon);
+      speedKmh = dt>0 ? (d/dt)*3.6 : 0;
+    } else {
+      speedKmh = 0;
+    }
+    if(!isFinite(speedKmh) || speedKmh<0) speedKmh=0;
+    if(speedKmh>300) speedKmh = trip.movingSpeeds.length ? trip.movingSpeeds[trip.movingSpeeds.length-1] : 0;
+
+    // distance accrual (filter noisy low-accuracy jumps)
+    if(trip.lastFix && pos.coords.accuracy<30){
+      var dt2=(now-trip.lastFix.t)/1000;
+      var dist=haversine(trip.lastFix.lat,trip.lastFix.lon,lat,lon);
+      if(dt2>0 && dist/dt2 < 83){ trip.distance += dist; } // ignore >300km/h jump artifacts
+    }
+    trip.lastFix = {lat:lat, lon:lon, t:now};
+    trip.movingSpeeds.push(speedKmh);
+    if(trip.movingSpeeds.length>2000) trip.movingSpeeds.shift();
+
+    updateHud(speedKmh);
+    updateAccel(speedKmh, now);
+
+    if(now-lastWeatherFetch > 10*60*1000){
+      lastWeatherFetch=now;
+      fetchWeather(lat,lon);
+    }
+  }
+
+  function onPositionError(err){
+    els.gpsdot.className="bad";
+  }
+
+  function startGeo(){
+    if(!("geolocation" in navigator)) return;
+    watchId = navigator.geolocation.watchPosition(onPosition, onPositionError, {
+      enableHighAccuracy:true, maximumAge:0, timeout:8000
+    });
+  }
+
+  // ---------- HUD rendering ----------
+  function updateHud(speedKmh){
+    els["speed-num"].textContent = Math.round(toDisplaySpeed(speedKmh));
+    var elapsedH = (Date.now()-trip.startTime)/3600000;
+    var avgKmh = elapsedH>0 ? (trip.distance/1000)/elapsedH : 0;
+    els["c-avg"].innerHTML = toDisplaySpeed(avgKmh).toFixed(1)+"<small>"+(state.units==="kmh"?"km/h":"mph")+"</small>";
+    var distDisplay = state.units==="kmh" ? trip.distance/1000 : trip.distance/1609.34;
+    els["c-dist"].innerHTML = distDisplay.toFixed(2)+"<small>"+(state.units==="kmh"?"km":"mi")+"</small>";
+  }
+
+  els["trip-reset"].onclick=function(){
+    trip.distance=0; trip.startTime=Date.now(); trip.movingSpeeds=[];
+    updateHud(0);
+  };
+
+  // ---------- weather ----------
+  var wmoIcon = function(code){
+    if(code===0) return "☀️";
+    if(code===1||code===2) return "⛅";
+    if(code===3) return "☁️";
+    if(code===45||code===48) return "🌫️";
+    if(code>=51&&code<=57) return "🌦️";
+    if(code>=61&&code<=67) return "🌧️";
+    if(code>=71&&code<=77) return "🌨️";
+    if(code>=80&&code<=82) return "🌦️";
+    if(code>=95) return "⛈️";
+    return "🌡️";
+  };
+  function fetchWeather(lat,lon){
+    fetch("https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&current_weather=true&temperature_unit=celsius")
+      .then(function(r){return r.json();})
+      .then(function(data){
+        if(data && data.current_weather){
+          var cw=data.current_weather;
+          els["c-weather"].innerHTML = wmoIcon(cw.weathercode)+" "+Math.round(cw.temperature)+"°C";
+        }
+      }).catch(function(){ els["c-weather"].textContent="N/D"; });
+  }
+
+  // ---------- battery ----------
+  function initBattery(){
+    if("getBattery" in navigator){
+      navigator.getBattery().then(function(bat){
+        function render(){
+          var icon = bat.charging ? "⚡" : (bat.level<0.2 ? "🪫" : "🔋");
+          els["c-batt"].innerHTML = icon+" "+Math.round(bat.level*100)+"<small>%</small>";
+        }
+        render();
+        bat.addEventListener("levelchange", render);
+        bat.addEventListener("chargingchange", render);
+      }).catch(function(){ els["c-batt"].textContent="N/D"; });
+    } else {
+      els["c-batt"].textContent="N/D";
+    }
+  }
+
+  // ---------- acceleration timing ----------
+  function renderAccelList(){
+    els["accel-list"].innerHTML = THRESHOLDS.map(function(t){
+      var cur = run.hits[t];
+      var b = best[t];
+      var hitClass = cur!==undefined ? " hit" : "";
+      return '<div class="accel-row'+hitClass+'">'+
+        '<div class="lbl">0 – '+t+' km/h</div>'+
+        '<div><span class="time mono">'+(cur!==undefined? cur.toFixed(2)+"s" : "—")+'</span>'+
+        (b!==undefined ? '<span class="best mono">best '+b.toFixed(2)+'s</span>' : '')+
+        '</div></div>';
+    }).join("");
+  }
+  renderAccelList();
+
+  function updateAccel(speedKmh, tms){
+    els["accel-speed"].textContent = Math.round(toDisplaySpeed(speedKmh));
+
+    if(run.status==="armed"){
+      if(speedKmh < 1.5){
+        run.prevSample = {v:speedKmh, t:tms};
+      } else {
+        // crossing from ~0 to moving: start the clock, interpolate start instant
+        var p = run.prevSample || {v:0,t:tms};
+        var frac = (0.5 - p.v) / (speedKmh - p.v || 1);
+        frac = Math.max(0, Math.min(1, frac));
+        run.startTime = p.t + frac*(tms-p.t);
+        run.status="running";
+        run.hits={};
+        els["accel-state"].textContent="RULARE ÎN CURS…";
+      }
+    }
+
+    if(run.status==="running"){
+      var p2 = run.prevSample || {v:0,t:run.startTime};
+      THRESHOLDS.forEach(function(t){
+        if(run.hits[t]===undefined && p2.v < t && speedKmh >= t){
+          var frac2 = (t - p2.v) / (speedKmh - p2.v || 1);
+          var crossT = p2.t + frac2*(tms - p2.t);
+          var elapsed = (crossT - run.startTime)/1000;
+          run.hits[t]=elapsed;
+          if(best[t]===undefined || elapsed < best[t]){ best[t]=elapsed; saveBest(); }
+        }
+      });
+      renderAccelList();
+      if(run.hits[100]!==undefined){
+        run.status="done";
+        els["accel-state"].textContent="RULARE FINALIZATĂ";
+        els["accel-btn"].classList.remove("running");
+        els["accel-btn"].innerHTML="START<br><span style=\"font-size:11px;font-weight:500;\">rulare nouă</span>";
+      }
+      run.prevSample = {v:speedKmh, t:tms};
+    } else if(run.status==="armed"){
+      run.prevSample = {v:speedKmh, t:tms};
+    }
+  }
+
+  els["accel-btn"].onclick=function(){
+    if(run.status==="running"){
+      run.status="idle";
+      els["accel-btn"].classList.remove("running");
+      els["accel-btn"].innerHTML="START<br><span style=\"font-size:11px;font-weight:500;\">rulare 0–100</span>";
+      els["accel-state"].textContent="APĂSĂ START ȘI ACCELEREAZĂ";
+    } else {
+      run.status="armed"; run.hits={}; run.prevSample=null;
+      renderAccelList();
+      els["accel-btn"].classList.add("running");
+      els["accel-btn"].innerHTML="STOP<br><span style=\"font-size:11px;font-weight:500;\">anulează</span>";
+      els["accel-state"].textContent="ARMAT — PORNEȘTE DIN LOC";
+    }
+  };
+
+  // ---------- boot ----------
+  loadAll().then(function(){
+    applySettings();
+    if(state.wake) requestWakeLock();
+  });
+
+  els["gate-btn"].onclick=function(){
+    els["gate-err"].textContent="";
+    if(!("geolocation" in navigator)){
+      els["gate-err"].textContent="Acest dispozitiv nu suportă geolocalizare.";
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(function(pos){
+      els.gate.style.display="none";
+      onPosition(pos);
+      startGeo();
+      initBattery();
+    }, function(err){
+      els["gate-err"].textContent="Acces refuzat la locație. Permite accesul din setările browserului și încearcă din nou.";
+    }, {enableHighAccuracy:true, timeout:10000});
+  };
+
+})();
+</script>
+</body>
+</html>
